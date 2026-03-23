@@ -403,44 +403,42 @@ with tab_setup:
     if r_ok:
         if st.button("🔍 Check installed packages", use_container_width=True):
             with st.spinner("Checking..."):
-                pkg_status = check_r_packages(r_path)
+                st.session_state["pkg_status"] = check_r_packages(r_path)
 
-            if pkg_status is None:
-                st.error("Could not check packages. Verify the R path.")
+        pkg_status = st.session_state.get("pkg_status")
+        if pkg_status is not None:
+            missing = [p for p, ok in pkg_status.items() if not ok]
+            installed_count = sum(pkg_status.values())
+            total = len(pkg_status)
+            st.write(f"**{installed_count}/{total} packages installed**")
+
+            cols = st.columns(3)
+            for i, (pkg, ok) in enumerate(sorted(pkg_status.items())):
+                cols[i % 3].write(f"{'✅' if ok else '❌'} {pkg}")
+
+            if missing:
+                st.warning(f"Missing: {', '.join(missing)}")
+                if st.button("📥 Install missing packages", type="primary", use_container_width=True):
+                    install_script = R_DIR / "install_packages.R"
+                    log_ph = st.empty()
+                    lines = []
+                    proc = subprocess.Popen(
+                        [r_path, "--vanilla", str(install_script)],
+                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                        text=True, encoding="utf-8", errors="replace",
+                        cwd=str(R_DIR)
+                    )
+                    for line in proc.stdout:
+                        lines.append(line.rstrip())
+                        log_ph.code("\n".join(lines[-40:]))
+                    proc.wait()
+                    st.session_state["pkg_status"] = None  # força novo check após instalar
+                    if proc.returncode == 0:
+                        st.success("✅ Installation complete! Check packages again to confirm.")
+                    else:
+                        st.error("Installation finished with errors — see the log above.")
             else:
-                missing = [p for p, ok in pkg_status.items() if not ok]
-                installed_count = sum(pkg_status.values())
-                total = len(pkg_status)
-                st.write(f"**{installed_count}/{total} packages installed**")
-
-                cols = st.columns(3)
-                for i, (pkg, ok) in enumerate(sorted(pkg_status.items())):
-                    cols[i % 3].write(f"{'✅' if ok else '❌'} {pkg}")
-
-                if missing:
-                    st.warning(f"Missing: {', '.join(missing)}")
-                    if st.button("📥 Install missing packages", type="primary", use_container_width=True):
-                        install_script = R_DIR / "install_packages.R"
-                        log_ph = st.empty()
-                        lines = []
-                        proc = subprocess.Popen(
-                            [r_path, "--vanilla", str(install_script)],
-                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                            text=True, encoding="utf-8", errors="replace",
-                            cwd=str(R_DIR)
-                        )
-                        for line in proc.stdout:
-                            lines.append(line.rstrip())
-                            log_ph.code("\n".join(lines[-40:]))
-                        proc.wait()
-                        if proc.returncode == 0:
-                            st.success(
-                                "✅ Installation complete! Check packages again to confirm.")
-                        else:
-                            st.error(
-                                "Installation finished with errors — see the log above.")
-                else:
-                    st.success("✅ All packages are installed!")
+                st.success("✅ All packages are installed!")
     else:
         st.info("Set the R path in the sidebar to check packages.")
 
